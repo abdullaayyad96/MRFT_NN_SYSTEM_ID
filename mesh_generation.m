@@ -25,7 +25,11 @@ tau__N_points = 150;
 
 
 %generaye mesh (logarithmic step)
+<<<<<<< HEAD
 gain_mesh = exp(linspace(log(gain_min), log(gain_max), gain_N_points));%gain values for the initial mesh
+=======
+gain_meshgain_meshgain_mesh = exp(linspace(log(gain_min), log(gain_max), gain_N_points));%gain values for the initial mesh
+>>>>>>> ae0590e8fd354fd5c7ef1710e994e4d5186c95b4
 T_prop_mesh = exp(linspace(log(T_prop_min), log(T_prop_max), T_prop_N_points));%gain values for the initial mesh
 T_body_mesh = exp(linspace(log(T_body_min), log(T_body_max), T_body_N_points));%gain values for the initial mesh
 tau_mesh = exp(linspace(log(tau_min), log(tau_max), tau__N_points));%gain values for the initial mesh
@@ -111,7 +115,11 @@ while(~finish)
     optimize_itr = 0;    
     %optimimize until a reasonable error cost is obtained or the max number
     %of iterations is exceeded
+<<<<<<< HEAD
     disp(sprintf('optimizing point [%d, %d, %d, %d] ...', i_gain, i_T_prop, i_T_body, i_tau));
+=======
+    fprintf('optimizing point %a %b %c %d ...\n', i_gain, i_T_prop, i_T_body, i_tau);
+>>>>>>> ae0590e8fd354fd5c7ef1710e994e4d5186c95b4
     while(ref_cost > 50 && optimize_itr < 3)  
         if(optimize_itr == 0)
             %optimize using the previous PD parameters as initial guess
@@ -124,7 +132,11 @@ while(~finish)
     end
     Kp = K(1);
     Kd = K(2);
+<<<<<<< HEAD
     disp(sprintf('optimal PD parameters found, referance cost is %d', ref_cost));
+=======
+    fprintf('optimal PD parameter found, referance cost is %a', ref_cost);
+>>>>>>> ae0590e8fd354fd5c7ef1710e994e4d5186c95b4
     
     
     %log point
@@ -236,9 +248,15 @@ while(~finish)
     
     %print these limits
     disp('low limit:')
+<<<<<<< HEAD
     disp([i_gain_limit_low  i_T_prop_limit_low i_T_body_limit_low i_tau_limit_low]);
     disp('high limit:')
     disp([i_gain_limit_high  i_T_prop_limit_high i_T_body_limit_high i_tau_limit_high]);
+=======
+    [i_gain_limit_low  i_T_prop_limit_low i_T_body_limit_low i_tau_limit_low]    
+    disp('high limit:')
+    [i_gain_limit_high  i_T_prop_limit_high i_T_body_limit_high i_tau_limit_high]
+>>>>>>> ae0590e8fd354fd5c7ef1710e994e4d5186c95b4
     
     
     if(min(mesh_class(:)) ~=0)
@@ -249,7 +267,11 @@ while(~finish)
     
     %display the percentage completed
     completed = 100 * size(find(mesh_class(:)~=0)) ./ size(mesh_class(:));
+<<<<<<< HEAD
     disp(sprintf('completed: %d', completed(1)));
+=======
+    fprintf('completed: %a', completed(1));
+>>>>>>> ae0590e8fd354fd5c7ef1710e994e4d5186c95b4
     
 end
 
