@@ -37,7 +37,7 @@ final_points = [];
 
 %the deterioration limit for discritization, once a point in the mesh
 %exceeds this limit a new point is added to the final discritization list
-deterioration_limit = 5;
+deterioration_limit = 20;
 
 %the mesh will be classified to into classes, each class correspond to the deterioration limit of a discritized point
 %these classes are stored in mesh_class
@@ -110,7 +110,7 @@ while(~finish)
     ref_cost = 1e6;
     optimize_itr = 0;    
     %optimimize until a reasonable error cost is obtained or the max number
-    %of iterations is exceeded
+    %of iterations is exceeded4
     disp(sprintf('optimizing point [%d, %d, %d, %d] ...', i_gain, i_T_prop, i_T_body, i_tau));
     while(ref_cost > 50 && optimize_itr < 3)  
         if(optimize_itr == 0)
@@ -239,7 +239,6 @@ while(~finish)
     disp([i_gain_limit_low  i_T_prop_limit_low i_T_body_limit_low i_tau_limit_low]);
     disp('high limit:')
     disp([i_gain_limit_high  i_T_prop_limit_high i_T_body_limit_high i_tau_limit_high]);
-    
     
     if(min(mesh_class(:)) ~=0)
         %finish when all points in the original mesh have been assigned to
