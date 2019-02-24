@@ -112,6 +112,7 @@ while(~finish)
     %optimimize until a reasonable error cost is obtained or the max number
     %of iterations is exceeded4
     disp(sprintf('optimizing point [%d, %d, %d, %d] ...', i_gain, i_T_prop, i_T_body, i_tau));
+
     while(ref_cost > 50 && optimize_itr < 3)  
         if(optimize_itr == 0)
             %optimize using the previous PD parameters as initial guess
@@ -125,7 +126,7 @@ while(~finish)
     Kp = K(1);
     Kd = K(2);
     disp(sprintf('optimal PD parameters found, referance cost is %d', ref_cost));
-    
+
     
     %log point
     final_points = [final_points ; [gain, T_prop, T_body, tau]];
@@ -239,6 +240,7 @@ while(~finish)
     disp([i_gain_limit_low  i_T_prop_limit_low i_T_body_limit_low i_tau_limit_low]);
     disp('high limit:')
     disp([i_gain_limit_high  i_T_prop_limit_high i_T_body_limit_high i_tau_limit_high]);
+
     
     if(min(mesh_class(:)) ~=0)
         %finish when all points in the original mesh have been assigned to
@@ -249,7 +251,7 @@ while(~finish)
     %display the percentage completed
     completed = 100 * size(find(mesh_class(:)~=0)) ./ size(mesh_class(:));
     disp(sprintf('completed: %d', completed(1)));
-    
+
 end
 
 save('discrete_mesh', 'gain_mesh', 'T_prop_mesh', 'T_body_mesh', 'tau_mesh', 'final_points', 'mesh_class')
