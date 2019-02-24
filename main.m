@@ -42,17 +42,17 @@ NN_N_timesteps = floor(NN_time_step/time_step) + 1; %total number of steps of pa
 %Percentage and step size of each parameter for in the four dimensional
 %mesh
 
-gain_range = 15; %range corresponds to +-15% of nominal value 
-gain_step = 30;  %step size in percentage of nominal value
+gain_range = 50; %range corresponds to +-15% of nominal value 
+gain_step = 100;  %step size in percentage of nominal value
 
-T_prop_range = 15; %range corresponds to +-15% of nominal value 
-T_prop_step = 30; %step size in percentage of nominal value
+T_prop_range = 50; %range corresponds to +-15% of nominal value 
+T_prop_step = 100; %step size in percentage of nominal value
 
 T_body_range = 0; %range corresponds to +-15% of nominal value 
-T_body_step = 30; %step size in percentage of nominal value
+T_body_step = 100; %step size in percentage of nominal value
 
-tau_range = 15; %range corresponds to +-15% of nominal value 
-tau_step = 30; %step size in percentage of nominal value
+tau_range = 50; %range corresponds to +-15% of nominal value 
+tau_step = 100; %step size in percentage of nominal value
 
 %define parameters grid based on the range and step size defined above
 gain_grid = (gain_nominal - gain_range*gain_nominal / 100) : (gain_step*gain_nominal/100) : (gain_nominal + gain_range*gain_nominal / 100);
@@ -64,8 +64,8 @@ tau_grid = (tau__nominal - tau_range*tau__nominal / 100) : (tau_step*tau__nomina
 N_mesh_points = length(gain_grid) * length(T_prop_grid) * length(T_body_grid) * length(tau_grid); %number of parameter sets in the descritized mesh
 
 
-%%
-N_train_per_point = 1; %number of times each mesh point is simulated for the training set
+ %%
+N_train_per_point = 20; %number of times each mesh point is simulated for the training set
 N_test_per_point = 1;%number of times each mesh point is simulated for the testing set
 
 
@@ -183,7 +183,7 @@ end
 %%
 %save training and testing set
 save('training_set', 'Xtrain', 'Ytrain')
-save('testing_set', 'Xtest', 'Ytest_truth')
+save('testing_set', 'Xtest', 'Ytest')
 
 
 %%
@@ -251,7 +251,7 @@ end
 %%
 %save segmented training and testing set
 save('training_set_seg', 'Xtrain_seg', 'Ytrain_seg')
-save('testing_set_seg', 'Xtest_seg', 'Ytest_truth_seg')
+save('testing_set_seg', 'Xtest_seg', 'Ytest_seg')
 
 
 %%
@@ -262,15 +262,39 @@ trained_network = trainNetwork(Xtrain, categorical(Ytrain), lgraph_1, options)
 %save models
 save('trained_model', 'lgraph_1', 'trained_network')
 
+%%
+%train NN on full timeseries with lstm
+%convert Xtrain to cell array
+Xtrain_cell = {};
+for i=1:size(Xtrain, 4)
+    Xtrain_cell{i, 1} = transpose( reshape(Xtrain(:,1,:,i), [size(Xtrain, 1), size(Xtrain,3)]));
+end
+options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 1000, 'MiniBatchSize',128, 'InitialLearnRate', 0.0005, 'GradientThreshold',1e5, 'SequenceLength','longest', 'LearnRateSchedule','piecewise', 'LearnRateDropPeriod',200,'LearnRateDropFactor',0.5);
+trained_network_lstm = trainNetwork(Xtrain_cell, categorical(Ytrain), layers_1_lstm, options)
 
+%save models
+save('trained_model_lstm', 'layers_1_lstm', 'trained_network_lstm')
 %%
 %train NN on segmented timeseries
-options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 120, 'MiniBatchSize',32, 'InitialLearnRate', 0.001);
+options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 150, 'MiniBatchSize',32, 'InitialLearnRate', 0.001);
 trained_network_seg = trainNetwork(Xtrain_seg, categorical(Ytrain_seg), lgraph_1_seg, options)
 
 %save models
 save('trained_model_seg', 'lgraph_1_seg', 'trained_network_seg')
 
+%%
+%train NN on segmented timeseries with lstm
+%convert Xtrain to cell array
+Xtrain_cell_seg = {};
+for i=1:size(Xtrain_seg, 4)
+    %Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(:,1,:,i), [size(Xtrain_seg, 1), size(Xtrain_seg,3)]));
+    Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(end-50:end,1,:,i), [51, size(Xtrain_seg,3)]));
+end
+options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 1000, 'MiniBatchSize',128, 'InitialLearnRate', 0.0005, 'GradientThreshold',1e5, 'SequenceLength','longest', 'LearnRateSchedule','piecewise', 'LearnRateDropPeriod',200,'LearnRateDropFactor',0.5);
+trained_network_lstm = trainNetwork(Xtrain_cell_seg, categorical(Ytrain_seg), layers_1_lstm, options)
+
+%save models
+save('trained_model_lstm', 'layers_1_lstm', 'trained_network_lstm')
 
 %%
 %run testing set on full timeseries
@@ -283,3 +307,11 @@ Ytest_activations = activations(trained_network, Xtrain, 'softmax');
 Ytest_seg_resuts = classify(trained_network_seg, Xtest_seg)
 Ytest_seg_activations = activations(trained_network_seg, Xtest_seg, 'softmax');
 
+%%
+%run testing set on lstm segment timeseries
+Xtest_cell_seg = {};
+for i=1:size(Xtest_seg, 4)
+    %Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(:,1,:,i), [size(Xtrain_seg, 1), size(Xtrain_seg,3)]));
+    Xtest_cell_seg{i, 1} = transpose( reshape(Xtest_seg(end-50:end,1,:,i), [51, size(Xtest_seg,3)]));
+end
+Ytest_lest_seg_resuts = classify(trained_network_lstm, Xtest_cell_seg)
