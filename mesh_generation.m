@@ -1,10 +1,18 @@
 %%
-%TODO: add HOW TO RUN 
+%HOW TO RUN 
 
+% 1. Select model Parameter ranges and 
+%     deterioration limit to run discritization on
+%
+% 2. Initialize Parameters for the discritization process
+%
+% 3. Run the discritization and save data
 
 %%
-clear() 
+% 1. Select model Parameter ranges and 
+%     deterioration limit to run discritization on
 
+clear() 
 %define mesh range for each parameter
 gain_min = 25; gain_max = 400;
 T_prop_min = 0.01; T_prop_max = 0.35;
@@ -47,11 +55,9 @@ mesh_class = zeros([gain_N_points, T_prop_N_points, T_body_N_points, tau_N_point
 deterioration_mesh = 200 * ones([gain_N_points, T_prop_N_points, T_body_N_points, tau_N_points]);
 
 
+%%
+% 2. Initialize Parameters for the discritization process
 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   %%
-%iterate through initial mesh and discritize according to deterioration
-%difine initial parameters for the simulations
-%the simulations are done using 'HeightModel_pid'
 global Kp Kd  t_final time_step gain T_prop T_body tau ref_val init_val bias_acc  sigma_h  cost_criteria
 Kp = 0; 
 Kd = 0;         
@@ -76,7 +82,11 @@ initial_tau = tau_N_points;
 
 
 %%
-%start iteration/discritization process
+% 3. Run the discritization and save data
+%iterate through initial mesh and discritize according to deterioration
+%difined initial parameters for the simulations
+%the simulations are done using 'HeightModel_pid'
+
 while(~finish)
     
     if (initial)
