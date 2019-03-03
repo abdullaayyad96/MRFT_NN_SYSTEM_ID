@@ -64,8 +64,19 @@ tau_grid = (tau__nominal - tau_range*tau__nominal / 100) : (tau_step*tau__nomina
 N_mesh_points = length(gain_grid) * length(T_prop_grid) * length(T_body_grid) * length(tau_grid); %number of parameter sets in the descritized mesh
 
 
+%%
+%apply smart discritized mesh
+
+%define parameters grid based on smart discritization
+gain_grid = transpose(final_points(:, 5));
+T_prop_grid = transpose(final_points(:, 6));
+T_body_grid = transpose(final_points(:, 7));
+tau_grid = transpose(final_points(:, 8));
+
+N_mesh_points = size(final_points, 1);
+
  %%
-N_train_per_point = 20; %number of times each mesh point is simulated for the training set
+N_train_per_point = 10; %number of times each mesh point is simulated for the training set
 N_test_per_point = 1;%number of times each mesh point is simulated for the testing set
 
 
@@ -109,7 +120,7 @@ for i=1:length(gain_grid)
                 ref_val = 1;
                 
                 %measurement noise 
-                 sigma_h = 0*0.001^2; 
+                 sigma_h = 0.001^2; 
                 
                 %simulate each mesh point N times for the training set
                 for sim_i=1:N_train_per_point
@@ -155,6 +166,79 @@ for i=1:length(gain_grid)
             end
         end
     end
+end
+
+%%
+%iterate, simulate, and log simulation for all smart discriized mesh
+
+iterator = 1;
+
+%iterate over range of parameters
+
+for i=1:N_mesh_points
+    gain = gain_grid(i);
+    tau = tau_grid(i);
+    T_prop = T_prop_grid(i);
+    T_body = T_body_grid(i);
+        
+    disp('simulation start')
+    disp('iteration')
+    disp(iterator)
+
+    %start simulation
+    %initial and reference value  
+    init_val = 0;
+    ref_val = 1;
+
+    %measurement noise 
+     sigma_h = 0*0.001^2; 
+
+    %simulate each mesh point N times for the training set
+    for sim_i=1:N_train_per_point
+
+        %set bias
+        bias_acc = (2*rand()-1) * 7;
+
+        %run simulation and log      
+        options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
+        simOut = sim('HeightModel_mrft',[],options);
+        Height_noise = logged_data.get('Height_noise');
+        val_height_noise=Height_noise.Values.Data;
+        %val_height_noise=Height_noise.Data;
+        u_tot = logged_data.get('u_tot');
+        val_u_tot=u_tot.Values.Data;
+        %val_u_tot=u_tot.Data;
+        
+        %append data to training set
+        sample_index = (iterator-1)*N_train_per_point + sim_i;
+        Xtrain(:,1,1,sample_index) = val_height_noise; %log height
+        Xtrain(:,1,2,sample_index) = val_u_tot; %log controller output
+        Ytrain(sample_index, 1) = iterator;
+    end
+    
+    %simulate each mesh point N times for the testing set
+    for sim_i=1:N_test_per_point
+        bias_acc = (2*rand()-1) * 7;                
+
+        options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
+        simOut = sim('HeightModel_mrft.slx',[],options);
+        Height_noise = logged_data.get('Height_noise');
+        val_height_noise=Height_noise.Values.Data;
+        %val_height_noise=Height_noise.Data;
+        u_tot = logged_data.get('u_tot');
+        val_u_tot=u_tot.Values.Data;
+        %val_u_tot=u_tot.Data;
+
+
+        %append data to testing set
+        sample_index = (iterator-1)*N_test_per_point + sim_i;
+        Xtest(:,1,1,sample_index) = val_height_noise; %log height
+        Xtest(:,1,2,sample_index) = val_u_tot;  %log controller output
+        Ytest(sample_index, 1) = iterator;
+    end
+
+    iterator = iterator + 1;
+
 end
 
 
@@ -290,7 +374,7 @@ for i=1:size(Xtrain_seg, 4)
     %Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(:,1,:,i), [size(Xtrain_seg, 1), size(Xtrain_seg,3)]));
     Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(end-50:end,1,:,i), [51, size(Xtrain_seg,3)]));
 end
-options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 1000, 'MiniBatchSize',128, 'InitialLearnRate', 0.0005, 'GradientThreshold',1e5, 'SequenceLength','longest', 'LearnRateSchedule','piecewise', 'LearnRateDropPeriod',200,'LearnRateDropFactor',0.5);
+options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 80, 'MiniBatchSize',128, 'InitialLearnRate', 0.005, 'GradientThreshold',1e5, 'SequenceLength','longest', 'LearnRateSchedule','piecewise', 'LearnRateDropPeriod',200,'LearnRateDropFactor',0.5);
 trained_network_lstm = trainNetwork(Xtrain_cell_seg, categorical(Ytrain_seg), layers_1_lstm, options)
 
 %save models
@@ -315,3 +399,14 @@ for i=1:size(Xtest_seg, 4)
     Xtest_cell_seg{i, 1} = transpose( reshape(Xtest_seg(end-50:end,1,:,i), [51, size(Xtest_seg,3)]));
 end
 Ytest_lest_seg_resuts = classify(trained_network_lstm, Xtest_cell_seg)
+
+correct=0;
+wrong=0;
+for i=1:length(Ytest)
+    if (double(Ytest_lest_seg_resuts(i)) == Ytest(i))
+        correct = correct+1;
+    else
+        wrong = wrong+1;
+    end
+end
+accuracy = 100 * correct / (correct+wrong)
