@@ -300,4 +300,37 @@ end
 
 save('discrete_mesh', 'gain_mesh', 'T_prop_mesh', 'T_body_mesh', 'tau_mesh', 'final_points', 'mesh_class', 'deterioration_mesh')
     
+%%
+%filter final mesh based on limits on time constants/delays ratios
+
+load('discrete_mesh_100.mat');
+final_points_filtered = final_points;
+A_1 = 0.02 / 0.015;
+A_2 = 0.7 / 0.015;
+A_3 = 0.02 / 0.12;
+A_4 = 0.7 / 0.12;
+
+ratio_1_min = min([A_1 A_2 A_3 A_4]);
+ratio_1_max = max([A_1 A_2 A_3 A_4]);
+
+ratio_2_min = 0.001 / 0.12;
+ratio_2_max = 0.02 / 0.015;
+indx2del = [];
+
+for i=1:size(final_points, 1)
+    temp_T_prop = final_points(i, 6);
+    temp_T_body = final_points(i, 7);    
+    temp_tau = final_points(i, 8);
     
+    ratio_1 = temp_T_body / temp_T_prop;
+    ratio_2 = temp_tau / temp_T_prop;
+    
+    if( (ratio_1 > ratio_1_max) || (ratio_1 < ratio_1_min) ...
+        || (ratio_2 > ratio_2_max) || (ratio_2 < ratio_2_min) )
+        
+        indx2del  = [indx2del, i];
+    end
+end
+
+ final_points_filtered( indx2del, : ) = [];
+ 
