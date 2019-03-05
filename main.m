@@ -77,11 +77,21 @@ T_body_grid = transpose(final_points(:, 7));
 tau_grid = transpose(final_points(:, 8));
 
 N_mesh_points = size(final_points, 1);
+%%
+% 1.2) Load automatically discritized mesh
+
+%define parameters grid based on smart discritization
+gain_grid = transpose(final_points_filtered(:, 5));
+T_prop_grid = transpose(final_points_filtered(:, 6));
+T_body_grid = transpose(final_points_filtered(:, 7));
+tau_grid = transpose(final_points_filtered(:, 8));
+
+N_mesh_points = size(final_points_filtered, 1);
 
 %%
 % 2. Select Simulation Parameters
 
-time_step = 0.001;
+time_step = 0.0001;
 t_final = 35; %final simulation time
 N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 
@@ -89,7 +99,7 @@ N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 beta_mrft = -0.8;
 h_mrft = 0.1;
 
-N_train_per_point = 10; %number of times each mesh point is simulated for the training set
+N_train_per_point = 20; %number of times each mesh point is simulated for the training set
 N_test_per_point = 1;%number of times each mesh point is simulated for the testing set
 
 
@@ -203,13 +213,13 @@ for i=1:N_mesh_points
     ref_val = 1;
 
     %measurement noise 
-     sigma_h = 0*0.001^2; 
+     sigma_h = 0.0005^2; 
 
     %simulate each mesh point N times for the training set
     for sim_i=1:N_train_per_point
 
         %set bias
-        bias_acc = (2*rand()-1) * 7;
+        bias_acc = (2*rand()-1) * 5;
 
         %run simulation and log      
         options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
@@ -230,7 +240,7 @@ for i=1:N_mesh_points
     
     %simulate each mesh point N times for the testing set
     for sim_i=1:N_test_per_point
-        bias_acc = (2*rand()-1) * 7;                
+        bias_acc = (2*rand()-1) * 5;                
 
         options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
         simOut = sim('HeightModel_mrft.slx',[],options);
@@ -258,7 +268,7 @@ end
 % 4.1) (Optional) downsample training data
 
 % reduce the timestep of the height and controller output time series
-NN_time_step = 0.05; %time step of timeseries passed to the Deep Neural Network
+NN_time_step = 0.0001; %time step of timeseries passed to the Deep Neural Network
 NN_N_timesteps = floor(NN_time_step/time_step) + 1; %total number of steps of passed to the DNN
 
 %training set
@@ -290,10 +300,10 @@ save('testing_set', 'Xtest', 'Ytest')
 % 3.2) (Optional) Take a specific time segment of the simulation data
 
 %Take only steady state response
-t_start = 25;         %start time for segmenting timeseries
+t_start = 29;         %start time for segmenting timeseries
 t_end = t_final;     %end time for segmenting timeseries
-dt_seg = 10;        %size of each segment in seconds
-stride_seg = 10;   %stride between segment centers
+dt_seg = 6;        %size of each segment in seconds
+stride_seg = 6;   %stride between segment centers
 
 N_timestep_seg = (dt_seg / NN_time_step) + 1; %number of timesteps per segment
 
@@ -354,6 +364,27 @@ end
 save('training_set_seg', 'Xtrain_seg', 'Ytrain_seg')
 save('testing_set_seg', 'Xtest_seg', 'Ytest_seg')
 
+%%
+%Downsample segmented data
+
+% reduce the timestep of the height and controller output time series
+NN_time_step = 0.001; %time step of timeseries passed to the Deep Neural Network
+NN_N_timesteps = floor(NN_time_step/time_step) + 1; %total number of steps of passed to the DNN
+
+%training set
+Xtrain_seg = Xtrain_seg(1:floor(NN_time_step/time_step):end, :, :, :);
+
+%testing set
+Xtest_seg = Xtest_seg(1:floor(NN_time_step/time_step):end, :, :, :);
+
+%%
+%take half of segment
+
+%training set
+Xtrain_seg = Xtrain_seg(end/2:end, :, :, :);
+
+%testing set
+Xtest_seg = Xtest_seg(end/2:end, :, :, :);
 
 %%
 %.5.1) Train using a CNN on entire simulation data
@@ -373,7 +404,7 @@ save('trained_model', 'lgraph_1', 'trained_network')
 %Load saved model / comment out if the model is being altered
 % load('trained_model_seg.mat')
 
-options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 150, 'MiniBatchSize',32, 'InitialLearnRate', 0.001);
+options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 100, 'LearnRateSchedule','piecewise', 'MiniBatchSize',128, 'InitialLearnRate', 0.001, 'LearnRateDropPeriod',50,'LearnRateDropFactor',0.05);
 trained_network_seg = trainNetwork(Xtrain_seg, categorical(Ytrain_seg), lgraph_1_seg, options)
 
 %save models
@@ -382,7 +413,7 @@ save('trained_model_seg', 'lgraph_1_seg', 'trained_network_seg')
 %%
 %.5.1) Train using LSTM 
 
-%Load saved model / comment out if the model is being altered
+% Load saved model / comment out if the model is being altered
 % load('trained_model_lstm.mat')
 
 %convert Xtrain to cell array
@@ -391,7 +422,7 @@ for i=1:size(Xtrain_seg, 4)
     %Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(:,1,:,i), [size(Xtrain_seg, 1), size(Xtrain_seg,3)]));
     Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(end-50:end,1,:,i), [51, size(Xtrain_seg,3)]));
 end
-options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 80, 'MiniBatchSize',128, 'InitialLearnRate', 0.005, 'GradientThreshold',1e5, 'SequenceLength','longest', 'LearnRateSchedule','piecewise', 'LearnRateDropPeriod',200,'LearnRateDropFactor',0.5);
+options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 200, 'MiniBatchSize',128, 'LearnRateSchedule','piecewise', 'GradientThreshold',1e5, 'SequenceLength','longest', 'InitialLearnRate', 0.001, 'LearnRateDropPeriod',10,'LearnRateDropFactor',0.9);
 trained_network_lstm = trainNetwork(Xtrain_cell_seg, categorical(Ytrain_seg), layers_1_lstm, options)
 
 %save models
@@ -410,6 +441,16 @@ Ytest_activations = activations(trained_network, Xtrain, 'softmax');
 Ytest_seg_resuts = classify(trained_network_seg, Xtest_seg)
 Ytest_seg_activations = activations(trained_network_seg, Xtest_seg, 'softmax');
 
+correct=0;
+wrong=0;
+for i=1:length(Ytest_seg)
+    if (double(Ytest_seg_resuts(i)) == Ytest_seg(i))
+        correct = correct+1;
+    else
+        wrong = wrong+1;
+    end
+end
+accuracy = 100 * correct / (correct+wrong)
 %%
 % run testing set on lstm segment timeseries
 
@@ -422,8 +463,8 @@ Ytest_lest_seg_resuts = classify(trained_network_lstm, Xtest_cell_seg)
 
 correct=0;
 wrong=0;
-for i=1:length(Ytest)
-    if (double(Ytest_lest_seg_resuts(i)) == Ytest(i))
+for i=1:length(Ytest_seg)
+    if (double(Ytest_lest_seg_resuts(i)) == Ytest_seg(i))
         correct = correct+1;
     else
         wrong = wrong+1;
