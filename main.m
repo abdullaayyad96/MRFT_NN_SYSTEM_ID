@@ -91,7 +91,7 @@ N_mesh_points = size(final_points_filtered, 1);
 %%
 % 2. Select Simulation Parameters
 
-time_step = 0.0001;
+time_step = 0.0005;
 t_final = 35; %final simulation time
 N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 
@@ -148,38 +148,38 @@ for i=1:length(gain_grid)
                 for sim_i=1:N_train_per_point
                     
                     %set bias
-                    bias_acc = (2*rand()-1) * 7;
+                    bias_relay = 0.5 * (2*rand()-1) * h_mrft;
                     
                     %run simulation and log      
                     options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
                     simOut = sim('HeightModel_mrft',[],options);
                     Height_noise = logged_data.get('Height_noise');
                     val_height_noise=Height_noise.Values.Data;
-                    u_tot = logged_data.get('u_tot');
-                    val_u_tot=u_tot.Values.Data;
+                    u = logged_data.get('u');
+                    val_u=u.Values.Data;
                     
                     %append data to training set
                     sample_index = (iterator-1)*N_train_per_point + sim_i;
                     Xtrain(:,1,1,sample_index) = val_height_noise; %log height
-                    Xtrain(:,1,2,sample_index) = val_u_tot; %log controller output
+                    Xtrain(:,1,2,sample_index) = val_u; %log controller output
                     Ytrain(sample_index, 1) = iterator;
                 end
                 
                 %simulate each mesh point N times for the testing set
                 for sim_i=1:N_test_per_point
-                    bias_acc = (2*rand()-1) * 7;                
+                    bias_relay = 0.5 * (2*rand()-1) * h_mrft;                
                     
                     options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
                     simOut = sim('HeightModel_mrft.slx',[],options);
                     Height_noise = logged_data.get('Height_noise');
                     val_height_noise=Height_noise.Values.Data;
-                    u_tot = logged_data.get('u_tot');
-                    val_u_tot=u_tot.Values.Data;
+                    u = logged_data.get('u');
+                    val_u=u.Values.Data;
 
                     %append data to testing set
                     sample_index = (iterator-1)*N_test_per_point + sim_i;
                     Xtest(:,1,1,sample_index) = val_height_noise; %log height
-                    Xtest(:,1,2,sample_index) = val_u_tot;  %log controller output
+                    Xtest(:,1,2,sample_index) = val_u;  %log controller output
                     Ytest(sample_index, 1) = iterator;
                 end
                 
@@ -213,13 +213,13 @@ for i=1:N_mesh_points
     ref_val = 1;
 
     %measurement noise 
-     sigma_h = 0.0005^2; 
+     sigma_h = 0*0.0005^2; 
 
     %simulate each mesh point N times for the training set
     for sim_i=1:N_train_per_point
 
         %set bias
-        bias_acc = (2*rand()-1) * 5;
+        bias_relay = 0.5 * (2*rand()-1) * h_mrft;
 
         %run simulation and log      
         options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
@@ -227,35 +227,35 @@ for i=1:N_mesh_points
         Height_noise = logged_data.get('Height_noise');
         val_height_noise=Height_noise.Values.Data;
         %val_height_noise=Height_noise.Data;
-        u_tot = logged_data.get('u_tot');
-        val_u_tot=u_tot.Values.Data;
-        %val_u_tot=u_tot.Data;
+        u = logged_data.get('u');
+        val_u=u.Values.Data;
+        %val_u=u.Data;
         
         %append data to training set
         sample_index = (iterator-1)*N_train_per_point + sim_i;
         Xtrain(:,1,1,sample_index) = val_height_noise; %log height
-        Xtrain(:,1,2,sample_index) = val_u_tot; %log controller output
+        Xtrain(:,1,2,sample_index) = val_u; %log controller output
         Ytrain(sample_index, 1) = iterator;
     end
     
     %simulate each mesh point N times for the testing set
     for sim_i=1:N_test_per_point
-        bias_acc = (2*rand()-1) * 5;                
+        bias_relay = 0.5 * (2*rand()-1) * h_mrft;               
 
         options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
         simOut = sim('HeightModel_mrft.slx',[],options);
         Height_noise = logged_data.get('Height_noise');
         val_height_noise=Height_noise.Values.Data;
         %val_height_noise=Height_noise.Data;
-        u_tot = logged_data.get('u_tot');
-        val_u_tot=u_tot.Values.Data;
+        u_tot = logged_data.get('u');
+        val_u=u.Values.Data;
         %val_u_tot=u_tot.Data;
 
 
         %append data to testing set
         sample_index = (iterator-1)*N_test_per_point + sim_i;
         Xtest(:,1,1,sample_index) = val_height_noise; %log height
-        Xtest(:,1,2,sample_index) = val_u_tot;  %log controller output
+        Xtest(:,1,2,sample_index) = val_u;  %log controller output
         Ytest(sample_index, 1) = iterator;
     end
 
