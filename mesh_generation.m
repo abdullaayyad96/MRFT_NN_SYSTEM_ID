@@ -141,7 +141,7 @@ while(~finish)
     
     %to save time and ensure flow accurate solution, change simulation time
     %range and time step size according to time constants
-    t_final = min([3, 10*max([T_body, T_prop])]);
+    t_final = max([3, 10*max([T_body, T_prop])]);
     time_step = min([tau, 0.1*min([T_body, T_prop])]);
         
     
