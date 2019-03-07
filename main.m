@@ -91,7 +91,7 @@ N_mesh_points = size(final_points_filtered, 1);
 %%
 % 2. Select Simulation Parameters
 
-time_step = 0.0005;
+time_step = 0.0001;
 t_final = 35; %final simulation time
 N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 
@@ -387,6 +387,73 @@ Xtrain_seg = Xtrain_seg(end/2:end, :, :, :);
 Xtest_seg = Xtest_seg(end/2:end, :, :, :);
 
 %%
+%take last cycle 
+Xtrain_cell_seg = {};
+for i=1:size(Xtrain_seg, 4)
+    u_temp = Xtrain_seg(:, 1, 2, i);
+    t_cycle = 0;
+    iterator = 0;
+    for j=1:length(u_temp)-15
+        if ((u_temp(end-j+1) - u_temp(end-j) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-1) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-2) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-3) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-4) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-5) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-6) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-7) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-8) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-9) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-10) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-11) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-12) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-13) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-14) > 1.5 * h_mrft))
+                
+            iterator = iterator + 1;
+        end
+        if iterator > 1
+            t_cycle = length(u_temp) - j;
+            break
+        end
+    end
+    
+    Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(t_cycle:end,1,:,i), [length(u_temp)-t_cycle+1, size(Xtrain_seg,3)]));
+end
+
+Xtest_cell_seg = {};
+for i=1:size(Xtest_seg, 4)
+    u_temp = Xtest_seg(:, 1, 2, i);
+    t_cycle = 0;
+    iterator = 0;
+    for j=1:length(u_temp)-15
+        if ((u_temp(end-j+1) - u_temp(end-j) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-1) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-2) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-3) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-4) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-5) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-6) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-7) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-8) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-9) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-10) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-11) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-12) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-13) > 1.5 * h_mrft) && ...
+                (u_temp(end-j+1) - u_temp(end-j-14) > 1.5 * h_mrft))
+                
+            iterator = iterator + 1;
+        end
+        if iterator > 1
+            t_cycle = length(u_temp) - j;
+            break
+        end
+    end
+    
+    Xtest_cell_seg{i, 1} = transpose( reshape(Xtest_seg(t_cycle:end,1,:,i), [length(u_temp)-t_cycle+1, size(Xtest_seg,3)]));
+end
+%%
 %.5.1) Train using a CNN on entire simulation data
 
 %Load saved model / comment out if the model is being altered
@@ -417,11 +484,11 @@ save('trained_model_seg', 'lgraph_1_seg', 'trained_network_seg')
 % load('trained_model_lstm.mat')
 
 %convert Xtrain to cell array
-Xtrain_cell_seg = {};
-for i=1:size(Xtrain_seg, 4)
-    %Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(:,1,:,i), [size(Xtrain_seg, 1), size(Xtrain_seg,3)]));
-    Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(end-50:end,1,:,i), [51, size(Xtrain_seg,3)]));
-end
+% Xtrain_cell_seg = {};
+% for i=1:size(Xtrain_seg, 4)
+%     %Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(:,1,:,i), [size(Xtrain_seg, 1), size(Xtrain_seg,3)]));
+%     Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(end-50:end,1,:,i), [51, size(Xtrain_seg,3)]));
+% end
 options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 200, 'MiniBatchSize',128, 'LearnRateSchedule','piecewise', 'GradientThreshold',1e5, 'SequenceLength','longest', 'InitialLearnRate', 0.001, 'LearnRateDropPeriod',10,'LearnRateDropFactor',0.9);
 trained_network_lstm = trainNetwork(Xtrain_cell_seg, categorical(Ytrain_seg), layers_1_lstm, options)
 
