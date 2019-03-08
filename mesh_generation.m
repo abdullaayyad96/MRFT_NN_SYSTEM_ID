@@ -16,7 +16,7 @@ clear()
 %define mesh range for each parameter
 gain_min = 25; gain_max = 400;
 T_prop_min = 0.01; T_prop_max = 0.35;
-T_body_min = 0.02; T_body_max = 150;
+T_body_min = 0.02; T_body_max = 5;
 tau_min = 0.0005; tau_max = 0.1;
 
 %number of initial discritized points for each parameter
