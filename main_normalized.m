@@ -35,7 +35,7 @@ N_mesh_points = 50;%size(final_points_normalized, 1);
 %%
 % 2. Select Simulation Parameters
 
-time_step = 0.001;
+time_step = 0.0001;
 t_final = 35; %final simulation time
 N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 
@@ -55,6 +55,8 @@ Ytrain = zeros(N_mesh_points*N_train_per_point, 1);
 Xtest = zeros(N_timesteps, 1, 2, N_mesh_points*N_test_per_point);
 Ytest = zeros(N_mesh_points*N_test_per_point, 1);
 
+expected_frequencies = zeros(N_train_per_point * N_mesh_points, 1);
+
 
 %%
 % 3.2) Apply MRFT test for automatically discritized mesh
@@ -65,10 +67,10 @@ iterator = 1;
 
 for i=1:N_mesh_points
     gain = final_points_normalized(1,5);
-    tau = (0.1-0.0005) * rand + 0.0005;%final_points_normalized(1,6);
+    tau = (0.1-0.001) * rand + 0.001;%final_points_normalized(1,6);
     T_prop = ratio_1_grid(i) * tau;
     T_body = ratio_2_grid(i) * tau;
-    
+        
     if(T_prop > 0.3)
         T_prop = 0.3;
     elseif(T_prop < 0.015)
@@ -79,7 +81,8 @@ for i=1:N_mesh_points
         T_body = 2;
     elseif(T_body < 0.2)
         T_body = 0.2;
-    end
+    end   
+    
         
     disp('simulation start')
     disp('iteration')
@@ -89,15 +92,17 @@ for i=1:N_mesh_points
     %initial and reference value  
     init_val = 0.001;
     ref_val = 0;
-
+    
+    height_model = tf([gain], [T_prop*T_body, T_prop+T_body, 1], 'IODelay', tau);
+    [amplitude, w] = get_MRFT_amplitude(height_model, h_mrft, beta_mrft);
     %measurement noise 
-     sigma_h = 0*0.0005^2; 
-
+    sigma_h = amplitude*0.05;
     %simulate each mesh point N times for the training set
     for sim_i=1:N_train_per_point
-
+        
+        expected_frequencies(i) = w;
         %set bias
-        bias_relay = 0*0.5 * (2*rand()-1) * h_mrft;
+        bias_relay = 0.5 * (2*rand()-1) * h_mrft;
 
         %run simulation and log      
         options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
@@ -118,7 +123,7 @@ for i=1:N_mesh_points
     
     %simulate each mesh point N times for the testing set
     for sim_i=1:N_test_per_point
-        bias_relay = 0*0.5 * (2*rand()-1) * h_mrft;               
+        bias_relay = 0.5 * (2*rand()-1) * h_mrft;               
 
         options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
         simOut = sim('HeightModel_mrft.slx',[],options);
@@ -146,7 +151,7 @@ end
 % 4.1) (Optional) downsample training data
 
 % reduce the timestep of the height and controller output time series
-NN_time_step = 0.001; %time step of timeseries passed to the Deep Neural Network
+NN_time_step = 0.0001; %time step of timeseries passed to the Deep Neural Network
 NN_N_timesteps = floor(NN_time_step/time_step) + 1; %total number of steps of passed to the DNN
 
 %training set
@@ -247,7 +252,7 @@ save('testing_set_seg_norm', 'Xtest_seg', 'Ytest_seg')
 %Downsample segmented data
 
 % reduce the timestep of the height and controller output time series
-NN_time_step = 0.001; %time step of timeseries passed to the Deep Neural Network
+NN_time_step = 0.0001; %time step of timeseries passed to the Deep Neural Network
 NN_N_timesteps = floor(NN_time_step/time_step) + 1; %total number of steps of passed to the DNN
 
 %training set
@@ -275,16 +280,25 @@ for i=1:size(Xtrain, 4)
     u_temp = Xtrain(:, 1, 2, i);
     iterator = 0;
     first_edge_detected = 0;
-    for j=1:length(u_temp)-7
-        if ((u_temp(end-j+1) - u_temp(end-j) > 1.95 * h_mrft) && ...
-                (u_temp(end-j+1) - u_temp(end-j-1) > 1.95 * h_mrft) && ...
-                (u_temp(end-j+1) - u_temp(end-j-2) > 1.95 * h_mrft) && ...
-                (u_temp(end-j+1) - u_temp(end-j-3) > 1.95 * h_mrft) && ...
-                (u_temp(end-j+1) - u_temp(end-j-4) > 1.95 * h_mrft) && ...
-                (u_temp(end-j+1) - u_temp(end-j-5) > 1.95 * h_mrft) && ...
-                (u_temp(end-j+1) - u_temp(end-j-6) > 1.95 * h_mrft))
-            iterator = iterator + 1;            
+    
+     for j=1:length(u_temp)-100
+        accept = true;        
+        for z=0:ceil((0.3*2*pi*expected_frequencies(i).^-1/NN_time_step))
+            if (u_temp(end-j+1) - u_temp(end-j) < 1.95 * h_mrft)
+                accept = false;
+                break
+            end
         end
+        if accept
+            iterator = iterator + 1;
+        end
+%         if ((u_temp(end-j+1) - u_temp(end-j) > 1.95 * h_mrft) && ...
+%                 (u_temp(end-j+1) - u_temp(end-j-1) > 1.95 * h_mrft) && ...
+%                 (u_temp(end-j+1) - u_temp(end-j-2) > 1.95 * h_mrft) && ...
+%                 (u_temp(end-j+1) - u_temp(end-j-3) > 1.95 * h_mrft) && ...
+%                 (u_temp(end-j+1) - u_temp(end-j-4) > 1.95 * h_mrft))
+%             iterator = iterator + 1;            
+%         end
         
         if (iterator == 1 && first_edge_detected == 0) 
             t_cycle_end(i) = length(u_temp) - j;
@@ -294,7 +308,6 @@ for i=1:size(Xtrain, 4)
             break
         end
     end
-    
     if longest_time < (t_cycle_end(i) - t_cycle_start(i))
         longest_time = t_cycle_end(i) - t_cycle_start(i);
     end
@@ -302,11 +315,11 @@ end
 
 %%
 % Generate data with only one cycle for each point in the mesh
-Xtrain_cycle =  zeros(longest_time, 1, 2, N_mesh_points*N_train_per_point);
+Xtrain_cycle =  zeros(longest_time+1, 1, 2, N_mesh_points*N_train_per_point);
 Ytrain_cycle = Ytrain;
 
 for i=1:size(Xtrain, 4)
-    Xtrain_cycle(end-(t_cycle_end(i)-t_cycle_start(i))+1:end, :, :, i) = Xtrain(t_cycle_start(i)+1:t_cycle_end(i), :, :, i);
+    Xtrain_cycle(end-(t_cycle_end(i)-t_cycle_start(i)):end, :, :, i) = Xtrain(t_cycle_start(i):t_cycle_end(i), :, :, i);
 end
 
 
