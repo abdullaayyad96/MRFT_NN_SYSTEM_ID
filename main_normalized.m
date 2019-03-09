@@ -35,7 +35,7 @@ N_mesh_points = 50;%size(final_points_normalized, 1);
 %%
 % 2. Select Simulation Parameters
 
-time_step = 0.0001;
+time_step = 0.001;
 t_final = 35; %final simulation time
 N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 
@@ -93,10 +93,11 @@ for i=1:N_mesh_points
     init_val = 0.001;
     ref_val = 0;
     
-    height_model = tf([gain], [T_prop*T_body, T_prop+T_body, 1], 'IODelay', tau);
+    height_model = tf([gain], [T_prop*T_body, T_prop+T_body, 1, 0], 'IODelay', tau);
     [amplitude, w] = get_MRFT_amplitude(height_model, h_mrft, beta_mrft);
     %measurement noise 
     sigma_h = amplitude*0.05;
+    
     %simulate each mesh point N times for the training set
     for sim_i=1:N_train_per_point
         
@@ -151,7 +152,7 @@ end
 % 4.1) (Optional) downsample training data
 
 % reduce the timestep of the height and controller output time series
-NN_time_step = 0.0001; %time step of timeseries passed to the Deep Neural Network
+NN_time_step = 0.001; %time step of timeseries passed to the Deep Neural Network
 NN_N_timesteps = floor(NN_time_step/time_step) + 1; %total number of steps of passed to the DNN
 
 %training set
@@ -252,7 +253,7 @@ save('testing_set_seg_norm', 'Xtest_seg', 'Ytest_seg')
 %Downsample segmented data
 
 % reduce the timestep of the height and controller output time series
-NN_time_step = 0.0001; %time step of timeseries passed to the Deep Neural Network
+NN_time_step = 0.001; %time step of timeseries passed to the Deep Neural Network
 NN_N_timesteps = floor(NN_time_step/time_step) + 1; %total number of steps of passed to the DNN
 
 %training set
@@ -273,6 +274,7 @@ Xtest_seg = Xtest_seg(end/2:end, :, :, :);
 %%
 %take last cycle 
 %Xtrain_cell_seg = {};
+
 t_cycle_start = zeros(1, size(Xtrain, 4));
 t_cycle_end = zeros(1, size(Xtrain, 4));
 longest_time = 0;
@@ -283,8 +285,8 @@ for i=1:size(Xtrain, 4)
     
      for j=1:length(u_temp)-100
         accept = true;        
-        for z=0:ceil((0.3*2*pi*expected_frequencies(i).^-1/NN_time_step))
-            if (u_temp(end-j+1) - u_temp(end-j) < 1.95 * h_mrft)
+        for z=0:ceil((0.03*2*pi*expected_frequencies(i).^-1/NN_time_step))
+            if (u_temp(end-j+1) - u_temp(end-j-z) > -1.95 * h_mrft)
                 accept = false;
                 break
             end
@@ -315,11 +317,11 @@ end
 
 %%
 % Generate data with only one cycle for each point in the mesh
-Xtrain_cycle =  zeros(longest_time+1, 1, 2, N_mesh_points*N_train_per_point);
+Xtrain_cycle =  zeros(longest_time, 1, 2, N_mesh_points*N_train_per_point);
 Ytrain_cycle = Ytrain;
 
 for i=1:size(Xtrain, 4)
-    Xtrain_cycle(end-(t_cycle_end(i)-t_cycle_start(i)):end, :, :, i) = Xtrain(t_cycle_start(i):t_cycle_end(i), :, :, i);
+    Xtrain_cycle(end-(t_cycle_end(i)-t_cycle_start(i))+1:end, :, :, i) = Xtrain(t_cycle_start(i)+1:t_cycle_end(i), :, :, i);
 end
 
 
