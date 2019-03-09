@@ -8,7 +8,7 @@
 %
 % 3. Run the discritization and save data
 
-%%
+%%                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
 % 1. Select model Parameter ranges and 
 %     deterioration limit to run discritization on
 
