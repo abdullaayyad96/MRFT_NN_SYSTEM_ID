@@ -18,13 +18,14 @@
 %%
 % 1. Load automatically discritized mesh
 clear()
-load('discrete_mesh_normalized_10_2.mat')
+load('discrete_mesh_normalized.mat')
 
 %define parameters grid based on smart discritization
-ratio_1_grid = transpose(final_points_normalized(randi([1, size(final_points_normalized,1)], 1, 50), 3));
-ratio_2_grid = transpose(final_points_normalized(randi([1, size(final_points_normalized,1)], 1, 50), 4));
+tau_grid = transpose(final_points_normalized(:, 4));
+T_prop_grid = transpose(final_points_normalized(:, 5));
+T_body_grid = transpose(final_points_normalized(:, 6));
 
-N_mesh_points = 50;%size(final_points_normalized, 1);
+N_mesh_points = size(final_points_normalized, 1);
 
 
 %%
@@ -38,8 +39,8 @@ N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 beta_mrft = -0.73;
 h_mrft = 0.1;
 
-N_train_per_point = 1; %number of times each mesh point is simulated for the training set
-N_test_per_point = 0;%number of times each mesh point is simulated for the testing set
+N_train_per_point = 50; %number of times each mesh point is simulated for the training set
+N_test_per_point = 1;%number of times each mesh point is simulated for the testing set
 
 
 %initialize all training timeseries
@@ -61,23 +62,10 @@ iterator = 1;
 %iterate over range of parameters
 
 for i=1:N_mesh_points
-    gain = final_points_normalized(1,5);
-    tau = (0.1-0.001) * rand + 0.001;%final_points_normalized(1,6);
-    T_prop = ratio_1_grid(i) * tau;
-    T_body = ratio_2_grid(i) * tau;
-        
-    if(T_prop > 0.3)
-        T_prop = 0.3;
-    elseif(T_prop < 0.015)
-        T_prop = 0.015;
-    end
-    
-    if(T_body > 2)
-        T_body = 2;
-    elseif(T_body < 0.2)
-        T_body = 0.2;
-    end   
-    
+    gain = final_points_normalized(1,7);
+    tau = tau_grid(i);
+    T_prop = T_prop_grid(i);
+    T_body = T_body_grid(i); 
         
     disp('simulation start')
     disp('iteration')
@@ -143,6 +131,8 @@ for i=1:N_mesh_points
 end
 
 
+save('training_set_norm', 'Xtrain', 'Ytrain')
+save('testing_set_norm', 'Xtest', 'Ytest')
 %%
 % 4.1) (Optional) downsample training data
 
