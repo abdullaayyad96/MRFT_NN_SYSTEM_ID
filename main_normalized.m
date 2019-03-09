@@ -6,15 +6,10 @@
 %   2. Select MRFT test parameters
 %
 %   3. Iterate through parameter sets and apply MRFT tests
-%       
-%   4. (optional)
-%       4.1) Downsample simulation data
-%       4.2) Take a specific time segment of the simulation data
+%   
+%   5. Take a specific time segment of the simulation data, one cycle
 %
 %   5. Train the neural network
-%       5.1) Train using a CNN on entire simulation data
-%       5.2) Train using specified time segment of the simulation data
-%       5.3) Train using LSTM
 %
 %   6. Run the trained network on a testing set
 
@@ -178,102 +173,8 @@ end
 save('training_set_norm', 'Xtrain', 'Ytrain')
 save('testing_set_norm', 'Xtest', 'Ytest')
 
-
 %%
-
-% 3.2) (Optional) Take a specific time segment of the simulation data
-
-%Take only steady state response
-t_start = 32;         %start time for segmenting timeseries
-t_end = t_final;     %end time for segmenting timeseries
-dt_seg = 35;        %size of each segment in seconds
-stride_seg = 35;   %stride between segment centers
-
-N_timestep_seg = (dt_seg / NN_time_step) + 1; %number of timesteps per segment
-
-%segment training set
-N_seg = floor(N_mesh_points*N_train_per_point*(t_end-t_start)/stride_seg); %total number of segments for training set
-Xtrain_seg = zeros(N_timestep_seg, 1, 2, N_seg);
-Ytrain_seg = zeros(N_seg, 1);
-
-segment_index = 1;
-for i=1:size(Xtrain,4)
-    %generate segments
-    
-    t_segment_start = t_start/NN_time_step + 1;
-    
-    for j=1:floor((t_end-t_start)/stride_seg)
-        Xtrain_seg(:,1,:,segment_index) = Xtrain(t_segment_start:(t_segment_start+N_timestep_seg-1), 1, :, i);
-        Ytrain_seg(segment_index,1) = Ytrain(i, 1);
-        
-        segment_index = segment_index + 1;
-        t_segment_start = floor(t_segment_start + stride_seg/NN_time_step);
-    end
-end
-
-%segment testing set
-N_seg = floor(N_mesh_points*N_test_per_point*(t_end-t_start)/stride_seg); %total number of segments for testing set
-Xtest_seg = zeros(N_timestep_seg, 1, 2, N_seg);
-Ytest_seg = zeros(N_seg, 1);
-
-segment_index = 1;
-for i=1:size(Xtest,4)
-    %generate segments
-    
-    t_segment_start = t_start/NN_time_step + 1;
-    
-    for j=1:floor((t_end-t_start)/stride_seg)
-        Xtest_seg(:,1,:,segment_index) = Xtest(t_segment_start:(t_segment_start+N_timestep_seg-1), 1, :, i);
-        Ytest_seg(segment_index,1) = Ytest(i, 1);
-        
-        segment_index = segment_index + 1;
-        t_segment_start = floor(t_segment_start + stride_seg/NN_time_step);
-    end
-end
-
-
-%%
-%plot samples from segmented training data
-figure()
-dim = ceil(sqrt(N_mesh_points));
-
-for i=1:(dim*dim)
-    subplot(dim, dim, i)
-    plot(Xtrain_seg(:,1,1,(i-1)*floor(N_train_per_point*(t_end-t_start)/stride_seg)+1))
-    title(Ytrain_seg((i-1)*floor(N_train_per_point*(t_end-t_start)/stride_seg)+1,1))
-end
-
-
-%%
-%save segmented training and testing set
-save('training_set_seg_norm', 'Xtrain_seg', 'Ytrain_seg')
-save('testing_set_seg_norm', 'Xtest_seg', 'Ytest_seg')
-
-%%
-%Downsample segmented data
-
-% reduce the timestep of the height and controller output time series
-NN_time_step = 0.001; %time step of timeseries passed to the Deep Neural Network
-NN_N_timesteps = floor(NN_time_step/time_step) + 1; %total number of steps of passed to the DNN
-
-%training set
-Xtrain_seg = Xtrain_seg(1:floor(NN_time_step/time_step):end, :, :, :);
-
-%testing set
-Xtest_seg = Xtest_seg(1:floor(NN_time_step/time_step):end, :, :, :);
-
-%%
-%take half of segment
-
-%training set
-Xtrain_seg = Xtrain_seg(end/2:end, :, :, :);
-
-%testing set
-Xtest_seg = Xtest_seg(end/2:end, :, :, :);
-
-%%
-%take last cycle 
-%Xtrain_cell_seg = {};
+%take last cycle of mrft test for each timeseries of generated data
 
 t_cycle_start = zeros(1, size(Xtrain, 4));
 t_cycle_end = zeros(1, size(Xtrain, 4));
@@ -294,13 +195,6 @@ for i=1:size(Xtrain, 4)
         if accept
             iterator = iterator + 1;
         end
-%         if ((u_temp(end-j+1) - u_temp(end-j) > 1.95 * h_mrft) && ...
-%                 (u_temp(end-j+1) - u_temp(end-j-1) > 1.95 * h_mrft) && ...
-%                 (u_temp(end-j+1) - u_temp(end-j-2) > 1.95 * h_mrft) && ...
-%                 (u_temp(end-j+1) - u_temp(end-j-3) > 1.95 * h_mrft) && ...
-%                 (u_temp(end-j+1) - u_temp(end-j-4) > 1.95 * h_mrft))
-%             iterator = iterator + 1;            
-%         end
         
         if (iterator == 1 && first_edge_detected == 0) 
             t_cycle_end(i) = length(u_temp) - j;
@@ -315,7 +209,6 @@ for i=1:size(Xtrain, 4)
     end
 end
 
-%%
 % Generate data with only one cycle for each point in the mesh
 Xtrain_cycle =  zeros(longest_time, 1, 2, N_mesh_points*N_train_per_point);
 Ytrain_cycle = Ytrain;
@@ -369,20 +262,10 @@ end
 save('training_set_cycle_norm', 'Xtrain_cycle', 'Ytrain_cycle')
 save('testing_set_cycle_norm', 'Xtest_cycle', 'Ytest_cycle')
 
-%%
-%.5.1) Train using a CNN on entire simulation data
 
-%Load saved model / comment out if the model is being altered
-% load('trained_model_norm.mat')
-
-options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 120, 'MiniBatchSize',32, 'InitialLearnRate', 0.0005);
-trained_network = trainNetwork(Xtrain, categorical(Ytrain), lgraph_1, options)
-
-%save models
-save('trained_model_norm', 'lgraph_1', 'trained_network')
 
 %%
-%.5.2) Train using a CNN on specific time segment of simulation data
+% 5. Train using a CNN on specific time segment of simulation data
 
 %Load saved model / comment out if the model is being altered
 %load('trained_model_seg_norm.mat')
@@ -393,61 +276,17 @@ trained_network_seg = trainNetwork(Xtrain_cycle, categorical(Ytrain_cycle), lgra
 %save models
 save('trained_model_seg_norm', 'lgraph_1_seg', 'trained_network_seg')
 
-%%
-%.5.1) Train using LSTM 
-
-% Load saved model / comment out if the model is being altered
-% load('trained_model_lstm_norm.mat')
-
-%convert Xtrain to cell array
-% Xtrain_cell_seg = {};
-% for i=1:size(Xtrain_seg, 4)
-%     %Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(:,1,:,i), [size(Xtrain_seg, 1), size(Xtrain_seg,3)]));
-%     Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(end-50:end,1,:,i), [51, size(Xtrain_seg,3)]));
-% end
-options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 200, 'MiniBatchSize',128, 'LearnRateSchedule','piecewise', 'GradientThreshold',1e5, 'SequenceLength','longest', 'InitialLearnRate', 0.001, 'LearnRateDropPeriod',10,'LearnRateDropFactor',0.9);
-trained_network_lstm = trainNetwork(Xtrain_cell_seg, categorical(Ytrain_seg), layers_1_lstm, options)
-
-%save models
-save('trained_model_lstm_norm', 'layers_1_lstm', 'trained_network_lstm')
 
 %%
-% 6. run testing set on full timeseries
+% 6. run testing set on segment timeseries
 
-Ytest_resuts = classify(trained_network, Xtest)
-Ytest_activations = activations(trained_network, Xtrain, 'softmax');
-
-
-%%
-% run testing set on segment timeseries
-
-Ytest_seg_resuts = classify(trained_network_seg, Xtest_seg)
-Ytest_seg_activations = activations(trained_network_seg, Xtest_seg, 'softmax');
+Ytest_cycle_resuts = classify(trained_network_seg, Xtest_cycle)
+Ytest_cycle_activations = activations(trained_network_seg, Xtest_cycle, 'softmax');
 
 correct=0;
 wrong=0;
-for i=1:length(Ytest_seg)
-    if (double(Ytest_seg_resuts(i)) == Ytest_seg(i))
-        correct = correct+1;
-    else
-        wrong = wrong+1;
-    end
-end
-accuracy = 100 * correct / (correct+wrong)
-%%
-% run testing set on lstm segment timeseries
-
-Xtest_cell_seg = {};
-for i=1:size(Xtest_seg, 4)
-    %Xtrain_cell_seg{i, 1} = transpose( reshape(Xtrain_seg(:,1,:,i), [size(Xtrain_seg, 1), size(Xtrain_seg,3)]));
-    Xtest_cell_seg{i, 1} = transpose( reshape(Xtest_seg(end-50:end,1,:,i), [51, size(Xtest_seg,3)]));
-end
-Ytest_lest_seg_resuts = classify(trained_network_lstm, Xtest_cell_seg)
-
-correct=0;
-wrong=0;
-for i=1:length(Ytest_seg)
-    if (double(Ytest_lest_seg_resuts(i)) == Ytest_seg(i))
+for i=1:length(Ytest_cycle)
+    if (double(Ytest_cycle_resuts(i)) == Ytest_cycle(i))
         correct = correct+1;
     else
         wrong = wrong+1;
