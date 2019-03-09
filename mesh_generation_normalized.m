@@ -16,19 +16,23 @@ clear()
 %define mesh range for ratios
 %ratio_1 is T_prop/tau 
 %ratio_2 is T_body/tau
+tau_min = 0.0005; tau_max = 0.1;
 ratio_1_min = 0.15; ratio_1_max = 600;
-ratio_2_min =   2; ratio_2_max = 4000;
+ratio_2_min =    2; ratio_2_max = 4000;
 
 %number of initial discritized points for each parameter
+tau_N_points     = 100;
 ratio_1_N_points = 250;
 ratio_2_N_points = 250;
 
 %generate mesh (constant step)
-% ratio_1_mesh = linspace(ratio_1_min, ratio_1_max, ratio_1_N_points);%gain values for the initial mesh
-% ratio_2_mesh = linspace(ratio_2_min, ratio_2_max, ratio_2_N_points);%gain values for the initial mesh
+% tau_mesh = linspace(tau_min, tau_max, tau_N_points);%tau values for the initial mesh
+% ratio_1_mesh = linspace(ratio_1_min, ratio_1_max, ratio_1_N_points);%ratio 1 values for the initial mesh
+% ratio_2_mesh = linspace(ratio_2_min, ratio_2_max, ratio_2_N_points);%ratio 2 values for the initial mesh
 
 
 %generaye mesh (logarithmic step)
+tau_mesh = exp(linspace(log(tau_min), log(tau_max), tau_N_points));%ratio 1 values for the initial mesh
 ratio_1_mesh = exp(linspace(log(ratio_1_min), log(ratio_1_max), ratio_1_N_points));%ratio 1 values for the initial mesh
 ratio_2_mesh = exp(linspace(log(ratio_2_min), log(ratio_2_max), ratio_2_N_points));%ratio 2 values for the initial mesh
 
@@ -43,10 +47,10 @@ deterioration_limit = 10;
 
 %the mesh will be classified to into classes, each class correspond to the deterioration limit of a discritized point
 %these classes are stored in mesh_class
-mesh_class = zeros([ratio_1_N_points, ratio_2_N_points]);
+mesh_class = zeros([tau_N_points, ratio_1_N_points, ratio_2_N_points]);
 
 %an array to store intermediate deterioration value during discritization
-deterioration_mesh = 200 * ones([ratio_1_N_points, ratio_2_N_points]);
+deterioration_mesh = 200 * ones([tau_N_points, ratio_1_N_points, ratio_2_N_points]);
 
 
 %%
@@ -63,7 +67,6 @@ t_final = 20;
 time_step = 0.0001;
 cost_criteria = 'ISE'; %optimization critirea, can be: 'IAE', 'ISE', 'ITAE', 'ITSE'
 gain = 1;
-tau = 0.01;
 
 %intermediate variables to use during discriziation
 finish = false;
@@ -71,6 +74,7 @@ class = size(final_points_normalized, 1);
 initial = (class==0);
 last_save = 0;
 
+initial_tau = 1;%tau_N_points
 initial_ratio_1 = 1;%ratio_1_N_points;
 initial_ratio_2 = 1;%ratio_2_N_points;
 
@@ -85,6 +89,7 @@ while(~finish)
     
     if (initial)
         %select first point in the mesh
+        i_tau = initial_tau;
         i_ratio_1 = initial_ratio_1;
         i_ratio_2 = initial_ratio_2;  
         initial = false;
@@ -94,29 +99,33 @@ while(~finish)
         temp_mesh_class = zeros(size(mesh_class)); 
         temp_mesh_class(mesh_class == 0) = 1;        
         temp_deterioration_mesh = deterioration_mesh .* temp_mesh_class;
-        [i_ratio_1, i_ratio_2] = ind2sub(size(temp_deterioration_mesh), find(temp_deterioration_mesh >= deterioration_limit));
+        [i_tau, i_ratio_1, i_ratio_2] = ind2sub(size(temp_deterioration_mesh), find(temp_deterioration_mesh >= deterioration_limit));
         
         
         %find point closest to initial point
         distance = 1e10;
         for k=1:length(i_ratio_1)
+            temp_i_tau = i_tau(k);
             temp_i_ratio_1 = i_ratio_1(k);
             temp_i_ratio_2 = i_ratio_2(k);
             
-            temp_distance = (temp_i_ratio_1-initial_ratio_1)^2 + (temp_i_ratio_2-initial_ratio_2)^2;
+            temp_distance = (temp_i_tau-initial_tau)^2 + (temp_i_ratio_1-initial_ratio_1)^2 + (temp_i_ratio_2-initial_ratio_2)^2;
             
             if (temp_distance < distance)
                 distance = temp_distance;
+                min_i_tau = temp_i_tau;
                 min_i_ratio_1 = temp_i_ratio_1;
                 min_i_ratio_2 = temp_i_ratio_2;
             end
         end
-            
+        
+        i_tau = min_i_tau;
         i_ratio_1 = min_i_ratio_1;
         i_ratio_2 = min_i_ratio_2;
     end
     
     %obtain values from the mesh that correspond to desired index
+    tau = tau_mesh(i_tau);
     T_prop = ratio_1_mesh(i_ratio_1) * tau;
     T_body = ratio_2_mesh(i_ratio_2) * tau;
     
@@ -133,7 +142,7 @@ while(~finish)
     optimize_itr = 0;    
     %optimimize until a reasonable error cost is obtained or the max number
     %of iterations is exceeded4
-    disp(sprintf('optimizing point [%d, %d] ...', i_ratio_1, i_ratio_2));
+    disp(sprintf('optimizing point [%d, %d, %d] ...', i_tau, i_ratio_1, i_ratio_2));
 
     while(ref_cost >  0.3 * t_final * ref_val^2 && optimize_itr < 3)  
         if(optimize_itr == 0)
@@ -149,22 +158,19 @@ while(~finish)
     Kd = K(2);
     disp(sprintf('optimal PD parameters found, referance cost is %d', ref_cost));
     
-    
-    %log point
-    final_points_normalized = [final_points_normalized ; [i_ratio_1, i_ratio_2, ratio_1_mesh(i_ratio_1), ratio_2_mesh(i_ratio_2), gain, tau]];
-    %deterioration is zero at the optimized point
-    deterioration_mesh(i_ratio_1, i_ratio_2) = 0;
-    
+       
     %for each optimized point, a range in Euclidean space is defined as its
     %deterioration limit. 
     %initializing the Euclidean ranges
+    i_tau_limit_low = i_tau;
     i_ratio_1_limit_low = i_ratio_1;
     i_ratio_2_limit_low = i_ratio_2;
 
+    i_tau_limit_high = i_tau;
     i_ratio_1_limit_high = i_ratio_1;
     i_ratio_2_limit_high = i_ratio_2;
 
-    for directions= 1:4
+    for directions= 1:6
         %iterate through 8 possible directions in four dimensional mesh             
         
         n_steps = 0;        
@@ -177,22 +183,26 @@ while(~finish)
             
             %determine current point of evaluation based on direction and
             %number of steps
-            i2_ratio_1 = i_ratio_1 + n_steps * (directions==1);
-            i2_ratio_1 = i2_ratio_1 - n_steps * (directions==2);
-
-            i2_ratio_2 = i_ratio_2 + n_steps * (directions==3);
-            i2_ratio_2 = i2_ratio_2 - n_steps * (directions==4); 
+            i2_tau = i_tau + n_steps * (directions==1);
+            i2_tau = i2_tau - n_steps * (directions==2);
             
-            if ( (i2_ratio_1>0) && (i2_ratio_2>0) && ...
-                (i2_ratio_1<=ratio_1_N_points) && (i2_ratio_2<=ratio_2_N_points))
+            i2_ratio_1 = i_ratio_1 + n_steps * (directions==3);
+            i2_ratio_1 = i2_ratio_1 - n_steps * (directions==4);
+
+            i2_ratio_2 = i_ratio_2 + n_steps * (directions==5);
+            i2_ratio_2 = i2_ratio_2 - n_steps * (directions==6); 
+            
+            if ( (i2_tau>0) && (i2_ratio_1>0) && (i2_ratio_2>0) && ...
+                (i2_tau<=tau_N_points) && (i2_ratio_1<=ratio_1_N_points) && (i2_ratio_2<=ratio_2_N_points))
                     %check that the current point of evaluation is within
                     %the initial mesh
                
-                    if (mesh_class(i2_ratio_1, i2_ratio_2) == 0)
+                    if (mesh_class(i2_tau, i2_ratio_1, i2_ratio_2) == 0)
                         %check that the current point is not assigned to a
                         %class
                         
                         %obtain parameter values
+                        tau = tau_mesh(i2_tau);
                         T_prop = ratio_1_mesh(i2_ratio_1) * tau;
                         T_body = ratio_2_mesh(i2_ratio_2) * tau;
                         
@@ -202,7 +212,7 @@ while(~finish)
                         
                         %update the deterioration value in the
                         %deterioration mesh
-                        deterioration_mesh(i2_ratio_1, i2_ratio_2) = deterioration;
+                        deterioration_mesh(i2_tau, i2_ratio_1, i2_ratio_2) = deterioration;
                         
                         %check whether deterioration limit has been
                         %exceeded
@@ -210,7 +220,7 @@ while(~finish)
                             deterioration_exceed = true;
                         end
 
-                    elseif(mesh_class(i2_ratio_1, i2_ratio_2) ~= 0)
+                    elseif(mesh_class(i2_tau, i2_ratio_1, i2_ratio_2) ~= 0)
                         %if the current point of evaluation has been
                         %assigned to another class, exit
                         deterioration_exceed = true;
@@ -223,17 +233,24 @@ while(~finish)
         
         %update deterioration margins based on most recent direction and
         %number of steps
-        i_ratio_1_limit_high = i_ratio_1_limit_high + (n_steps-1) * (directions==1);                
-        i_ratio_1_limit_low = i_ratio_1_limit_low - (n_steps-1) * (directions==2);
+        i_tau_limit_high = i_tau_limit_high + (n_steps-1) * (directions==1);                
+        i_tau_limit_low = i_tau_limit_low - (n_steps-1) * (directions==2);
+        
+        i_ratio_1_limit_high = i_ratio_1_limit_high + (n_steps-1) * (directions==3);                
+        i_ratio_1_limit_low = i_ratio_1_limit_low - (n_steps-1) * (directions==4);
 
-        i_ratio_2_limit_high = i_ratio_2_limit_high + (n_steps-1) * (directions==3);
-        i_ratio_2_limit_low = i_ratio_2_limit_low - (n_steps-1) * (directions==4);               
+        i_ratio_2_limit_high = i_ratio_2_limit_high + (n_steps-1) * (directions==5);
+        i_ratio_2_limit_low = i_ratio_2_limit_low - (n_steps-1) * (directions==6);               
     end
-    
+        
+    %log point
+    final_points_normalized = [final_points_normalized ; [i_tau, i_ratio_1, i_ratio_2, tau_mesh(i_tau), ratio_1_mesh(i_ratio_1), ratio_2_mesh(i_ratio_2), gain]];
+    %deterioration is zero at the optimized point
+    deterioration_mesh(i_tau, i_ratio_1, i_ratio_2) = 0;
     %update the mesh_class according to the deterioration ranges found
     %above
     class = class + 1;
-    mesh_class(i_ratio_1_limit_low:i_ratio_1_limit_high, i_ratio_2_limit_low:i_ratio_2_limit_high) = class;
+    mesh_class(i_tau_limit_low:i_tau_limit_high, i_ratio_1_limit_low:i_ratio_1_limit_high, i_ratio_2_limit_low:i_ratio_2_limit_high) = class;
     
     %print these limits
     disp('low limit:')
@@ -253,10 +270,10 @@ while(~finish)
     disp(sprintf('completed: %d %', completed(1)));
     if ((completed(1) - last_save) > 10)
         last_save = completed(1);
-        save('discrete_mesh_normalized_10_2', 'ratio_1_mesh', 'ratio_2_mesh', 'final_points_normalized', 'mesh_class', 'deterioration_mesh')
+        save('discrete_mesh_normalized_10', 'tau_mesh', 'ratio_1_mesh', 'ratio_2_mesh', 'final_points_normalized', 'mesh_class', 'deterioration_mesh')
     end
 end
 
-save('discrete_mesh_normalized_10_2', 'ratio_1_mesh', 'ratio_2_mesh', 'final_points_normalized', 'mesh_class', 'deterioration_mesh')
+save('discrete_mesh_normalized_10', 'tau_mesh', 'ratio_1_mesh', 'ratio_2_mesh', 'final_points_normalized', 'mesh_class', 'deterioration_mesh')
     
  
