@@ -15,13 +15,13 @@
 clear() 
 %define mesh range for ratios
 tau_min = 0.0005; tau_max = 0.1;
-T_prop_min = 0.015; T_prop_max = 0.1;
+T_prop_min = 0.015; T_prop_max = 0.3;
 T_body_min =   0.2; T_body_max = 2;
 
 %number of initial discritized points for each parameter
-tau_N_points     = 100;
-T_prop_N_points  = 150;
-T_body_N_points = 150;
+tau_N_points     = 35;
+T_prop_N_points  = 20;
+T_body_N_points = 15;
 
 %generate mesh (constant step)
 % tau_mesh = linspace(tau_min, tau_max, tau_N_points);%tau values for the initial mesh
@@ -54,7 +54,7 @@ deterioration_mesh = 200 * ones([tau_N_points, T_prop_N_points, T_body_N_points]
 %%
 % 2. Initialize Parameters for the discritization process
 
-global Kp Kd  t_final time_step gain T_prop T_body tau ref_val init_val bias_acc  sigma_h  cost_criteria
+global Kp Kd  t_final gain T_prop T_body tau ref_val init_val bias_acc  sigma_h  cost_criteria
 Kp = 0; 
 Kd = 0;         
 ref_val = 1;    
@@ -62,7 +62,6 @@ init_val = 0;
 bias_acc = 0;
 sigma_h = 0;    
 t_final = 20;
-time_step = 0.0001;
 cost_criteria = 'ISE'; %optimization critirea, can be: 'IAE', 'ISE', 'ITAE', 'ITSE'
 gain = 1;
 
@@ -72,7 +71,7 @@ class = size(final_points_normalized, 1);
 initial = (class==0);
 last_save = 0;
 
-initial_tau = 1;%tau_N_points
+initial_tau = 1;%tau_N_points;
 initial_T_prop = 1;%T_prop_N_points;
 initial_T_body = 1;%T_body_N_points;
 
@@ -120,6 +119,8 @@ while(~finish)
         i_tau = min_i_tau;
         i_T_prop = min_i_T_prop;
         i_T_body = min_i_T_body;
+        
+        deterioration_mesh(i_tau, i_T_prop, i_T_body)
     end
     
     %obtain values from the mesh that correspond to desired index
@@ -129,31 +130,20 @@ while(~finish)
     
     %to save time and ensure flow accurate solution, change simulation time
     %range and time step size according to time constants
-    t_final = max([3, 10*max([T_body, T_prop])]);
-    time_step = min([tau, 0.1*min([T_body, T_prop])]);
-        
+    t_final = max([3, 10*max([T_body, T_prop])]);        
     
     %find optimal PD params    
     warning ('off','all');
     
-    ref_cost = 1e6;
-    optimize_itr = 0;    
     %optimimize until a reasonable error cost is obtained or the max number
     %of iterations is exceeded4
     disp(sprintf('optimizing point [%d, %d, %d] ...', i_tau, i_T_prop, i_T_body));
 
-    while(ref_cost >  0.3 * t_final * ref_val^2 && optimize_itr < 3)  
-        if(optimize_itr == 0)
-            %optimize using the previous PD parameters as initial guess
-            [K,ref_cost,~] = fminsearchbnd((@get_step_cost_identified),[Kp Kd], [0 0],[],optimset('Algorithm', 'SQP', 'MaxFunEvals',1000,'MaxIter',100,'TolFun', t_final * ref_val^2 * 1e-3,'TolX',2e-4,'Display','on'));
-        else            
-            %optimize using zeroes as initial guess
-            [K,ref_cost,~] = fminsearchbnd((@get_step_cost_identified),[0 0], [0 0],[],optimset('Algorithm', 'SQP', 'MaxFunEvals',1000,'MaxIter',100,'TolFun', t_final * ref_val^2 * 1e-3,'TolX',2e-4,'Display','on'));
-        end
-        optimize_itr = optimize_itr + 1;
-    end
-    Kp = K(1);
-    Kd = K(2);
+    %find optimal PD parameters and cost
+    [K,ref_cost,~] = fminsearchbnd((@get_step_cost_identified),[0 0], [0 0],[],optimset('MaxFunEvals',1000,'MaxIter',1000,'TolFun', 1e-4,'TolX',1e-4,'Display','on'));
+
+    center_Kp = K(1);
+    center_Kd = K(2);
     disp(sprintf('optimal PD parameters found, referance cost is %d', ref_cost));
     
        
@@ -204,9 +194,17 @@ while(~finish)
                         T_prop = T_prop_mesh(i2_T_prop);
                         T_body = T_body_mesh(i2_T_body);
                         
+                        disp(sprintf('invistigating point [%d, %d, %d] ...', i2_tau, i2_T_prop, i2_T_body));
+                        
+                        cost_1 = get_step_cost_identified([center_Kp, center_Kd]);
+                        
+                        %optimize PD parameters for current pointof invistigation
+                        [K,cost_2,~] = fminsearchbnd((@get_step_cost_identified),[center_Kp center_Kd], [0 0],[],optimset('MaxFunEvals',1000,'MaxIter',100,'TolFun', 1e-4, 'TolX',1e-4,'Display','on'));
+                        current_Kp = K(1);
+                        current_Kd = K(2);
+                        
                         %obtain cost and deterioration at current point
-                        cost = get_step_cost_identified([Kp, Kd]);
-                        deterioration = abs((cost - ref_cost) / ref_cost) * 100;
+                        deterioration = abs((cost_1 - cost_2) / cost_2) * 100
                         
                         %update the deterioration value in the
                         %deterioration mesh
@@ -266,12 +264,13 @@ while(~finish)
     %display the percentage completed
     completed = 100 * size(find(mesh_class(:)~=0)) ./ size(mesh_class(:));
     disp(sprintf('completed: %d %', completed(1)));
-    if ((completed(1) - last_save) > 10)
+    if ((completed(1) - last_save) > 5)
         last_save = completed(1);
-        save('discrete_mesh_normalized_10', 'tau_mesh', 'T_prop_mesh', 'T_body_mesh', 'final_points_normalized', 'mesh_class', 'deterioration_mesh')
+        save('discrete_mesh_normalized', 'tau_mesh', 'T_prop_mesh', 'T_body_mesh', 'final_points_normalized', 'mesh_class', 'deterioration_mesh')
     end
 end
 
-save('discrete_mesh_normalized_10', 'tau_mesh', 'T_prop_mesh', 'T_body_mesh', 'final_points_normalized', 'mesh_class', 'deterioration_mesh')
-    
+save('discrete_mesh_normalized', 'tau_mesh', 'T_prop_mesh', 'T_body_mesh', 'final_points_normalized', 'mesh_class', 'deterioration_mesh')
+
+
  
