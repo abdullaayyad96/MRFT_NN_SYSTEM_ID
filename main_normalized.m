@@ -18,7 +18,7 @@
 %%
 % 1. Load automatically discritized mesh
 clear()
-load('discrete_mesh_normalized.mat')
+load('discrete_mesh_normalized_2D_to_3D.mat')
 
 %define parameters grid based on smart discritization
 tau_grid = transpose(final_points_normalized(:, 4));
@@ -39,8 +39,8 @@ N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 beta_mrft = -0.73;
 h_mrft = 0.1;
 
-N_train_per_point = 50; %number of times each mesh point is simulated for the training set
-N_test_per_point = 1;%number of times each mesh point is simulated for the testing set
+N_train_per_point = 1; %number of times each mesh point is simulated for the training set
+N_test_per_point = 0;%number of times each mesh point is simulated for the testing set
 
 
 %initialize all training timeseries
@@ -52,6 +52,12 @@ Xtest = zeros(N_timesteps, 1, 2, N_mesh_points*N_test_per_point);
 Ytest = zeros(N_mesh_points*N_test_per_point, 1);
 
 expected_frequencies = zeros(N_train_per_point * N_mesh_points, 1);
+
+%relay bias percentage
+bias_mag = 0;%0.5;
+
+%noise percentage
+noise_mag = 0;%0.05;
 
 
 %%
@@ -79,14 +85,14 @@ for i=1:N_mesh_points
     height_model = tf([gain], [T_prop*T_body, T_prop+T_body, 1, 0], 'IODelay', tau);
     [amplitude, w] = get_MRFT_amplitude(height_model, h_mrft, beta_mrft);
     %measurement noise 
-    sigma_h = amplitude*0.05;
+    sigma_h = amplitude*noise_mag;
     
     %simulate each mesh point N times for the training set
     for sim_i=1:N_train_per_point
         
         expected_frequencies(i) = w;
         %set bias
-        bias_relay = 0.5 * (2*rand()-1) * h_mrft;
+        bias_relay = bias_mag * (2*rand()-1) * h_mrft;
 
         %run simulation and log      
         options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
@@ -107,7 +113,7 @@ for i=1:N_mesh_points
     
     %simulate each mesh point N times for the testing set
     for sim_i=1:N_test_per_point
-        bias_relay = 0.5 * (2*rand()-1) * h_mrft;               
+        bias_relay = bias_mag * (2*rand()-1) * h_mrft;               
 
         options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
         simOut = sim('HeightModel_mrft.slx',[],options);
@@ -127,12 +133,12 @@ for i=1:N_mesh_points
     end
 
     iterator = iterator + 1;
-
+    
+    
+    save('training_set_norm', 'Xtrain', 'Ytrain')
+    save('testing_set_norm', 'Xtest', 'Ytest')
 end
 
-
-save('training_set_norm', 'Xtrain', 'Ytrain')
-save('testing_set_norm', 'Xtest', 'Ytest')
 %%
 % 4.1) (Optional) downsample training data
 
@@ -160,8 +166,8 @@ end
 
 %%
 %save training and testing set
-save('training_set_norm', 'Xtrain', 'Ytrain')
-save('testing_set_norm', 'Xtest', 'Ytest')
+save('training_set_norm', 'Xtrain', 'Ytrain', '-v7.3')
+save('testing_set_norm', 'Xtest', 'Ytest', '-v7.3')
 
 %%
 %take last cycle of mrft test for each timeseries of generated data
