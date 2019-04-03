@@ -19,6 +19,7 @@
 % 1. Load automatically discritized mesh
 clear()
 load('discrete_mesh_normalized_2D_to_3D.mat')
+final_points_normalized = final_points_normalized(1:10, :);
 
 %define parameters grid based on smart discritization
 tau_grid = transpose(final_points_normalized(:, 4));
@@ -32,6 +33,7 @@ N_mesh_points = size(final_points_normalized, 1);
 % 2. Select Simulation Parameters
 
 time_step = 0.001;
+NN_time_step = 0.001;
 t_final = 35; %final simulation time
 N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 
@@ -39,8 +41,8 @@ N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 beta_mrft = -0.73;
 h_mrft = 0.1;
 
-N_train_per_point = 1; %number of times each mesh point is simulated for the training set
-N_test_per_point = 0;%number of times each mesh point is simulated for the testing set
+N_train_per_point = 15; %number of times each mesh point is simulated for the training set
+N_test_per_point = 1;%number of times each mesh point is simulated for the testing set
 
 
 %initialize all training timeseries
@@ -51,13 +53,13 @@ Ytrain = zeros(N_mesh_points*N_train_per_point, 1);
 Xtest = zeros(N_timesteps, 1, 2, N_mesh_points*N_test_per_point);
 Ytest = zeros(N_mesh_points*N_test_per_point, 1);
 
-expected_frequencies = zeros(N_train_per_point * N_mesh_points, 1);
+expected_frequencies = zeros(N_mesh_points, 1);
 
 %relay bias percentage
-bias_mag = 0;%0.5;
+bias_mag = 0.5;
 
 %noise percentage
-noise_mag = 0;%0.05;
+noise_mag = 0.05;
 
 
 %%
@@ -84,25 +86,29 @@ for i=1:N_mesh_points
     
     height_model = tf([gain], [T_prop*T_body, T_prop+T_body, 1, 0], 'IODelay', tau);
     [amplitude, w] = get_MRFT_amplitude(height_model, h_mrft, beta_mrft);
+    
+    expected_frequencies(iterator) = w;
     %measurement noise 
     sigma_h = amplitude*noise_mag;
     
     %simulate each mesh point N times for the training set
     for sim_i=1:N_train_per_point
         
-        expected_frequencies(i) = w;
         %set bias
         bias_relay = bias_mag * (2*rand()-1) * h_mrft;
 
         %run simulation and log      
-        options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
-        simOut = sim('HeightModel_mrft',[],options);
-        Height_noise = logged_data.get('Height_noise');
+        %options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
+        options = simset('SrcWorkspace','current');
+        simOut = sim('HeightModel_mrft.slx',[],options);
+        %Height_noise = logged_data.get('Height_noise');
+        Height_noise = simOut.logsout.get('Height_noise');
         val_height_noise=Height_noise.Values.Data;
         %val_height_noise=Height_noise.Data;
-        u = logged_data.get('u');
-        val_u=u.Values.Data;
-        %val_u=u.Data;
+        %u_tot = logged_data.get('u');
+        u_tot = simOut.logsout.get('u');
+        val_u= u_tot.Values.Data;
+        %val_u_tot=u_tot.Data;
         
         %append data to training set
         sample_index = (iterator-1)*N_train_per_point + sim_i;
@@ -115,13 +121,16 @@ for i=1:N_mesh_points
     for sim_i=1:N_test_per_point
         bias_relay = bias_mag * (2*rand()-1) * h_mrft;               
 
-        options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
+        %options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
+        options = simset('SrcWorkspace','current');
         simOut = sim('HeightModel_mrft.slx',[],options);
-        Height_noise = logged_data.get('Height_noise');
+        %Height_noise = logged_data.get('Height_noise');
+        Height_noise = simOut.logsout.get('Height_noise');
         val_height_noise=Height_noise.Values.Data;
         %val_height_noise=Height_noise.Data;
-        u_tot = logged_data.get('u');
-        val_u=u.Values.Data;
+        %u_tot = logged_data.get('u');
+        u_tot = simOut.logsout.get('u');
+        val_u= u_tot.Values.Data;
         %val_u_tot=u_tot.Data;
 
 
@@ -134,9 +143,6 @@ for i=1:N_mesh_points
 
     iterator = iterator + 1;
     
-    
-    save('training_set_norm', 'Xtrain', 'Ytrain')
-    save('testing_set_norm', 'Xtest', 'Ytest')
 end
 
 %%
@@ -166,24 +172,28 @@ end
 
 %%
 %save training and testing set
-save('training_set_norm', 'Xtrain', 'Ytrain', '-v7.3')
-save('testing_set_norm', 'Xtest', 'Ytest', '-v7.3')
+save('training_set_norm', 'Xtrain', 'Ytrain', 'expected_frequencies')
+save('testing_set_norm', 'Xtest', 'Ytest')
 
 %%
 %take last cycle of mrft test for each timeseries of generated data
 
 t_cycle_start = zeros(1, size(Xtrain, 4));
 t_cycle_end = zeros(1, size(Xtrain, 4));
+
 longest_time = 0;
 for i=1:size(Xtrain, 4)
     u_temp = Xtrain(:, 1, 2, i);
     iterator = 0;
     first_edge_detected = 0;
     
-     for j=1:length(u_temp)-100
-        accept = true;        
-        for z=0:ceil((0.03*2*pi*expected_frequencies(i).^-1/NN_time_step))
-            if (u_temp(end-j+1) - u_temp(end-j-z) > -1.95 * h_mrft)
+    for j=1:length(u_temp)-100
+        accept = true;     
+        
+        i_expected_frequency = floor( (i-1) / N_train_per_point) + 1;
+        
+        for z=0:ceil(( (0.3*2*pi) / (expected_frequencies(i_expected_frequency)*NN_time_step)))
+            if (u_temp(end-j+1) - u_temp(end-j-z) < 1.95 * h_mrft)
                 accept = false;
                 break
             end
@@ -228,7 +238,7 @@ end
 
 %%
 %Scaling amplitude to one
-c2 = zeros(size(Xtrain_cycle, 4));
+c2 = zeros(size(Xtrain_cycle, 4), 1);
 
 for i=1:size(Xtrain_cycle, 4)
     h_temp = Xtrain_cycle(:, 1, 1, i);
@@ -241,7 +251,8 @@ for i=1:size(Xtrain_cycle, 4)
     
 end
 
-%plot samples from cycle training data
+%%
+%plot samples from normalized cycle training data
 figure()
 dim = ceil(sqrt(N_mesh_points));
 
@@ -266,7 +277,20 @@ save('testing_set_cycle_norm', 'Xtest_cycle', 'Ytest_cycle')
 %Load saved model / comment out if the model is being altered
 %load('trained_model_seg_norm.mat')
 
-options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 500, 'LearnRateSchedule','none', 'MiniBatchSize',128, 'InitialLearnRate', 0.001, 'LearnRateDropPeriod',50,'LearnRateDropFactor',0.05);
+options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 200, 'LearnRateSchedule','piecewise', 'MiniBatchSize', 350, 'InitialLearnRate', 0.01, 'LearnRateDropPeriod',500,'LearnRateDropFactor',0.75);
+
+lgraph_1_seg = [ 
+    imageInputLayer([434, 1, 2])
+    convolution2dLayer([300, 1],200, 'Stride', [100, 1])
+    reluLayer()
+    fullyConnectedLayer(3000)
+    reluLayer()
+    fullyConnectedLayer(1000)
+    reluLayer()
+    fullyConnectedLayer(10, 'name', 'ok')
+    softmaxLayer()
+    classificationLayer];
+
 trained_network_seg = trainNetwork(Xtrain_cycle, categorical(Ytrain_cycle), lgraph_1_seg, options)
 
 %save models
@@ -275,6 +299,8 @@ save('trained_model_seg_norm', 'lgraph_1_seg', 'trained_network_seg')
 
 %%
 % 6. run testing set on segment timeseries
+Xtest_cycle = Xtrain_cycle;
+Ytest_cycle = Ytrain_cycle;
 
 Ytest_cycle_resuts = classify(trained_network_seg, Xtest_cycle)
 Ytest_cycle_activations = activations(trained_network_seg, Xtest_cycle, 'softmax');
