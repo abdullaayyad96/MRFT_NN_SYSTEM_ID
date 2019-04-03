@@ -19,7 +19,7 @@
 % 1. Load automatically discritized mesh
 clear()
 load('discrete_mesh_normalized_2D_to_3D.mat')
-final_points_normalized = final_points_normalized(1:10, :);
+final_points_normalized = final_points_normalized(end-9:end, :);
 
 %define parameters grid based on smart discritization
 tau_grid = transpose(final_points_normalized(:, 4));
@@ -41,8 +41,8 @@ N_timesteps = floor(t_final/time_step) + 1; %total number of steps
 beta_mrft = -0.73;
 h_mrft = 0.1;
 
-N_train_per_point = 15; %number of times each mesh point is simulated for the training set
-N_test_per_point = 1;%number of times each mesh point is simulated for the testing set
+N_train_per_point = 50; %number of times each mesh point is simulated for the training set
+N_test_per_point = 5;%number of times each mesh point is simulated for the testing set
 
 
 %initialize all training timeseries
@@ -99,6 +99,7 @@ for i=1:N_mesh_points
 
         %run simulation and log      
         %options = simset('SrcWorkspace','current','DstWorkspace','current','SignalLoggingName','logged_data');
+        set_param('HeightModel_mrft','FastRestart','on');
         options = simset('SrcWorkspace','current');
         simOut = sim('HeightModel_mrft.slx',[],options);
         %Height_noise = logged_data.get('Height_noise');
@@ -177,6 +178,7 @@ save('testing_set_norm', 'Xtest', 'Ytest')
 
 %%
 %take last cycle of mrft test for each timeseries of generated data
+%(training set)
 
 t_cycle_start = zeros(1, size(Xtrain, 4));
 t_cycle_end = zeros(1, size(Xtrain, 4));
@@ -215,7 +217,49 @@ for i=1:size(Xtrain, 4)
     end
 end
 
-% Generate data with only one cycle for each point in the mesh
+
+%%
+%take last cycle of mrft test for each timeseries of generated data
+%(Testing set)
+
+t_cycle_start_test = zeros(1, size(Xtrain, 4));
+t_cycle_end_test = zeros(1, size(Xtrain, 4));
+
+for i=1:size(Xtest, 4)
+    u_temp = Xtest(:, 1, 2, i);
+    iterator = 0;
+    first_edge_detected = 0;
+    
+    for j=1:length(u_temp)-100
+        accept = true;     
+        
+        i_expected_frequency = floor( (i-1) / N_test_per_point) + 1;
+        
+        for z=0:ceil(( (0.3*2*pi) / (expected_frequencies(i_expected_frequency)*NN_time_step)))
+            if (u_temp(end-j+1) - u_temp(end-j-z) < 1.95 * h_mrft)
+                accept = false;
+                break
+            end
+        end
+        if accept
+            iterator = iterator + 1;
+        end
+        
+        if (iterator == 1 && first_edge_detected == 0) 
+            t_cycle_end_test(i) = length(u_temp) - j;
+            first_edge_detected = 1;
+        elseif (iterator >= 2)
+            t_cycle_start_test(i) = length(u_temp) - j;            
+            break
+        end
+    end
+    if longest_time < (t_cycle_end_test(i) - t_cycle_start_test(i))
+        longest_time = t_cycle_end_test(i) - t_cycle_start_test(i);
+    end
+end
+
+%%
+% Generate data with only one cycle for each point in the mesh (training)
 Xtrain_cycle =  zeros(longest_time, 1, 2, N_mesh_points*N_train_per_point);
 Ytrain_cycle = Ytrain;
 
@@ -223,7 +267,13 @@ for i=1:size(Xtrain, 4)
     Xtrain_cycle(end-(t_cycle_end(i)-t_cycle_start(i))+1:end, :, :, i) = Xtrain(t_cycle_start(i)+1:t_cycle_end(i), :, :, i);
 end
 
+% Generate data with only one cycle for each point in the mesh (testing)
+Xtest_cycle =  zeros(longest_time, 1, 2, N_mesh_points*N_test_per_point);
+Ytest_cycle = Ytest;
 
+for i=1:size(Xtest, 4)
+    Xtest_cycle(end-(t_cycle_end_test(i)-t_cycle_start_test(i))+1:end, :, :, i) = Xtest(t_cycle_start_test(i)+1:t_cycle_end_test(i), :, :, i);
+end
 %%
 %plot samples from cycle training data
 figure()
@@ -235,9 +285,20 @@ for i=1:(dim*dim)
     title(Ytrain_cycle((i-1)*floor(N_train_per_point)+1,1))
 end
 
+%%
+%plot samples from cycle testing data
+figure()
+dim = ceil(sqrt(N_mesh_points));
+
+for i=1:(dim*dim)
+    subplot(dim, dim, i)
+    plot(Xtest_cycle(:,1,1,(i-1)*floor(N_test_per_point)+1))
+    title(Ytest_cycle((i-1)*floor(N_test_per_point)+1,1))
+end
+
 
 %%
-%Scaling amplitude to one
+%Scaling amplitude to one (training)
 c2 = zeros(size(Xtrain_cycle, 4), 1);
 
 for i=1:size(Xtrain_cycle, 4)
@@ -248,6 +309,21 @@ for i=1:size(Xtrain_cycle, 4)
     c2(i) = 1 / amplitude;
     
     Xtrain_cycle(:, 1, 1, i) = h_temp / amplitude;
+    
+end
+
+%%
+%Scaling amplitude to one (testing)
+c2 = zeros(size(Xtest_cycle, 4), 1);
+
+for i=1:size(Xtest_cycle, 4)
+    h_temp = Xtest_cycle(:, 1, 1, i);
+    
+    amplitude = (max(h_temp(:)) - min(h_temp(:))) / 2;
+    
+    c2(i) = 1 / amplitude;
+    
+    Xtest_cycle(:, 1, 1, i) = h_temp / amplitude;
     
 end
 
@@ -264,11 +340,24 @@ for i=1:(dim*dim)
     
     title(Ytrain_cycle((i-1)*floor(N_train_per_point)+1,1))
 end
+
+%%
+%plot samples from normalized cycle testing data
+figure()
+dim = ceil(sqrt(N_mesh_points));
+
+for i=1:(dim*dim)
+    subplot(dim, dim, i)
+    plot(Xtest_cycle(:,1,1,(i-1)*floor(N_test_per_point)+1))
+    hold on    
+    plot(Xtest_cycle(:,1,2,(i-1)*floor(N_test_per_point)+1))
+    
+    title(Ytest_cycle((i-1)*floor(N_test_per_point)+1,1))
+end
 %%
 %save segmented training and testing set
 save('training_set_cycle_norm', 'Xtrain_cycle', 'Ytrain_cycle')
 save('testing_set_cycle_norm', 'Xtest_cycle', 'Ytest_cycle')
-
 
 
 %%
@@ -277,16 +366,18 @@ save('testing_set_cycle_norm', 'Xtest_cycle', 'Ytest_cycle')
 %Load saved model / comment out if the model is being altered
 %load('trained_model_seg_norm.mat')
 
-options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 200, 'LearnRateSchedule','piecewise', 'MiniBatchSize', 350, 'InitialLearnRate', 0.01, 'LearnRateDropPeriod',500,'LearnRateDropFactor',0.75);
+options = trainingOptions('adam', 'Plots', 'training-progress','Shuffle','every-epoch','MaxEpochs', 500, 'LearnRateSchedule','piecewise', 'MiniBatchSize', 350, 'InitialLearnRate', 0.005, 'LearnRateDropPeriod',100,'LearnRateDropFactor',0.5);
 
 lgraph_1_seg = [ 
-    imageInputLayer([434, 1, 2])
-    convolution2dLayer([300, 1],200, 'Stride', [100, 1])
+    imageInputLayer([3008, 1, 2])
+    convolution2dLayer([300, 1], 50, 'Stride', [100, 1])
     reluLayer()
     fullyConnectedLayer(3000)
     reluLayer()
+    dropoutLayer(0.5)
     fullyConnectedLayer(1000)
     reluLayer()
+    dropoutLayer(0.5)
     fullyConnectedLayer(10, 'name', 'ok')
     softmaxLayer()
     classificationLayer];
@@ -299,9 +390,6 @@ save('trained_model_seg_norm', 'lgraph_1_seg', 'trained_network_seg')
 
 %%
 % 6. run testing set on segment timeseries
-Xtest_cycle = Xtrain_cycle;
-Ytest_cycle = Ytrain_cycle;
-
 Ytest_cycle_resuts = classify(trained_network_seg, Xtest_cycle)
 Ytest_cycle_activations = activations(trained_network_seg, Xtest_cycle, 'softmax');
 
